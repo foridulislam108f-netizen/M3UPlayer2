@@ -1,0 +1,52 @@
+name: Build APK from ZIP
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main", "master" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Find and extract ZIP
+        run: |
+          ZIP=$(find . -maxdepth 3 -iname '*.zip' -not -path './.git/*' | head -n 1)
+          if [ -z "$ZIP" ]; then
+            echo "::error::Repository te kono .zip file paoa jayni. ZIP upload korun."
+            exit 1
+          fi
+          echo "ZIP file: $ZIP"
+          mkdir -p "$RUNNER_TEMP/proj"
+          unzip -q -o "$ZIP" -d "$RUNNER_TEMP/proj"
+          SETTINGS=$(find "$RUNNER_TEMP/proj" \( -name settings.gradle.kts -o -name settings.gradle \) | head -n 1)
+          if [ -z "$SETTINGS" ]; then
+            echo "::error::ZIP er bhitore settings.gradle.kts paoa jayni."
+            exit 1
+          fi
+          echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: gradle --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: M3U-Player-APK
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
